@@ -25,9 +25,10 @@ Create A Task Manager for Your Daily needs.
 
 - [ ] Sort By Deadlines/Priority.
 - [ ] Sub Tasks(?).
-- [ ] Set Tasks Active/Inactive
-- [ ]
+- [ ] Set Tasks Active/Inactive.
+- [ ] Persistent Storage.
 
 ## IMPLEMENTATION/ALGORITHM/GENERAL IDEA
 
-Use Linked Lists to Store Tasks.
+The Popular `ncurses` library is used for the TUI.
+Use Linked Lists to Store Tasks. External Storage of Tasks will use (JSON/SQLite).
