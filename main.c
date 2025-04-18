@@ -1,5 +1,6 @@
 #include <cjson/cJSON.h>
 #include <curses.h>
+#include <float.h>
 #include <menu.h>
 #include <ncurses.h>
 #include <panel.h>
@@ -15,19 +16,21 @@ typedef struct Task {
   struct Task *nextTask;
 } Task;
 
-Task *createTask() {
+Task *createTask(WINDOW *window) {
   Task *newTask = (Task *)malloc(sizeof(Task));
-  clear();
-  printw("Title: ");
-  getnstr(newTask->title, 32);
-  printw("Description: ");
-  getnstr(newTask->desc, 128);
+  wclear(window);
+  box(window, 0, 0);
+  wmove(window, 1, 1);
+  wprintw(window, "Title: ");
+  wgetnstr(window, newTask->title, 32);
+  wmove(window, 2, 1);
+  wprintw(window, "Description: ");
+  wgetnstr(window, newTask->desc, 128);
   newTask->nextTask = NULL;
   return newTask;
 }
 
-void insert(Task **head) {
-  Task *newTask = createTask();
+void insert(Task **head, Task *newTask) {
   if (*head == NULL)
     *head = newTask;
   else {
@@ -38,10 +41,11 @@ void insert(Task **head) {
   }
 }
 
-void delete(Task **head, int pos) {
-  clear();
-  printw("Are you sure? (y/n)");
-  char choice = getch();
+void delete(Task **head, int pos, WINDOW *window) {
+  wclear(window);
+  box(window, 0, 0);
+  mvwprintw(window, 1, 1, "Are you sure? (y/n)");
+  char choice = wgetch(window);
 
   if (*head == NULL || choice != 'y') // Empty
     return;
@@ -88,28 +92,35 @@ Task *getTask(Task *head, int taskNo) {
   return temp;
 }
 
-void printMenu(Task *head, int currentTaskNo) {
+void printMenu(Task *head, WINDOW *window, int currentTaskNo) {
   Task *temp = head;
   int taskNo = 0;
-  clear();
-  move(0, 0);
+  wclear(window);
+  box(window, 0, 0);
+  wmove(window, 1, 1);
   while (temp != NULL) {
     if (currentTaskNo == taskNo) {
-      attron(A_STANDOUT);
-      printw("%s", temp->title);
-      attroff(A_STANDOUT);
+      wattron(window, A_STANDOUT);
+      wprintw(window, "%s", temp->title);
+      wattroff(window, A_STANDOUT);
     } else
-      printw("%s", temp->title);
+      wprintw(window, "%s", temp->title);
     temp = temp->nextTask;
-    move(++taskNo, 0);
-    refresh();
+    wmove(window, ++taskNo + 1, 1);
   }
+  wrefresh(window);
 }
 
-WINDOW *createDescWindow(Task **head, int task) {}
+void printDesc(Task *task, WINDOW *window) {
+  wclear(window);
+  box(window, 0, 0);
+  wmove(window, 1, 1);
+  wprintw(window, "%s", task->desc);
+  wrefresh(window);
+}
 
 int main() {
-  Task *head = NULL;
+  Task *head = NULL, *newTask;
 
   int choice;
   bool deleteMode = false, run = true;
@@ -119,9 +130,19 @@ int main() {
   initscr();
   keypad(stdscr, true);
   cbreak();
+  curs_set(0);
+  WINDOW *taskWindow = newwin(LINES, COLS / 2, 0, 0);
+  WINDOW *descWindow = newwin(LINES, COLS / 2, 0, COLS / 2);
+  wclear(taskWindow);
+  wclear(descWindow);
+  box(taskWindow, 0, 0);
+  box(descWindow, 0, 0);
+  refresh();
+  wrefresh(taskWindow);
+  wrefresh(descWindow);
 
   while (run) {
-    printMenu(head, currentTaskNo);
+    printMenu(head, taskWindow, currentTaskNo);
     choice = getch();
     switch (choice) {
     case KEY_UP:
@@ -129,22 +150,25 @@ int main() {
         currentTaskNo = size - 1;
       else
         currentTaskNo--;
+      printDesc(getTask(head, currentTaskNo), descWindow);
       break;
     case KEY_DOWN:
       if (currentTaskNo == size - 1)
         currentTaskNo = 0;
       else
         currentTaskNo++;
+      printDesc(getTask(head, currentTaskNo), descWindow);
       break;
     case KEY_F(1):
-      insert(&head);
+      newTask = createTask(taskWindow);
+      insert(&head, newTask);
       size++;
       break;
     case KEY_F(2):
       if (size != 0)
         deleteMode = true;
       break;
-    case 10:
+    case 10: // ENTER
       task = currentTaskNo;
       break;
     case KEY_F(10):
@@ -153,7 +177,9 @@ int main() {
     }
 
     if (deleteMode) {
-      delete (&head, task);
+      delete (&head, currentTaskNo, taskWindow);
+      if (currentTaskNo == size - 1)
+        currentTaskNo--;
       size--;
       deleteMode = false;
     }
