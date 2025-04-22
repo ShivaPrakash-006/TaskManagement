@@ -7,6 +7,7 @@
   - [IMPLEMENTATION/ALGORITHM/GENERAL IDEA](#implementationalgorithmgeneral-idea)
   - [WORKING](#working)
   - [Bugs](#bugs)
+  - [NOTES](#notes)
   <!--toc:end-->
 
 Create A Task Manager for Your Daily needs.
@@ -15,9 +16,9 @@ Create A Task Manager for Your Daily needs.
 
 - [ ] Beautiful TUI
 - [x] Add any task to the list.
-- [-] Group tasks (Linked List?).
+- [x] Group tasks (Linked List?).
   - [x] Create and Assign Groups
-  - [-] Filter by Group
+  - [x] Filter by Group
 - [ ] Link tasks (Graphs).
 - [ ] Set deadlines for tasks.
 - [ ] Set priority for tasks.
@@ -44,4 +45,8 @@ Press F10 to exit
 
 - Pressing Arrow Keys while task list empty crashes
 - Does not automatically clear description screen
--
+- `printWrapped` segmentation error randomly → I think I fixed it, but be aware.
+
+## NOTES
+
+None for now

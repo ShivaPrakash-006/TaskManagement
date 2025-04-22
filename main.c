@@ -9,10 +9,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef enum Priority { Urgent = 1, Normal = 2, Casual = 3 } Priority;
+
 typedef struct Task {
   char title[32];
   char desc[512];
   char group[32];
+  bool completed;
+  Priority priority;
   struct Task *linkedTasks;
   struct Task *nextTask;
 } Task;
@@ -35,7 +39,7 @@ void printTitle(WINDOW *window, char *text) {
 void printWrapped(char *text, WINDOW *window, int startx, int starty) {
   char *letter = text;
   int x = startx, y = starty, width = getmaxx(window);
-  wmove(window, startx, starty);
+  wmove(window, starty, startx);
 
   while (*letter) {
     if (x >= width - 1) {
@@ -46,24 +50,31 @@ void printWrapped(char *text, WINDOW *window, int startx, int starty) {
     mvwaddch(window, y, x++, *letter++);
     wrefresh(window);
   }
+  y += 2;
+  wmove(window, y, startx);
 }
 
-void printTasks(Task *head, WINDOW *window, int currentTaskNo) {
+void printTasks(Task *head, WINDOW *window, int currentTaskNo, char *group) {
   Task *temp = head;
   int taskNo = 0;
+  int lineNo = 1;
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Tasks");
   wmove(window, 1, 1);
   while (temp != NULL) {
-    if (currentTaskNo == taskNo) {
-      wattron(window, A_STANDOUT);
-      wprintw(window, "%s", temp->title);
-      wattroff(window, A_STANDOUT);
-    } else
-      wprintw(window, "%s", temp->title);
+    if ((strcmp(temp->group, "") != 0 && strcmp(temp->group, group) == 0) ||
+        strcmp(group, "") == 0) {
+      if (currentTaskNo == taskNo) {
+        wattron(window, A_STANDOUT);
+        wprintw(window, "%s", temp->title);
+        wattroff(window, A_STANDOUT);
+      } else
+        wprintw(window, "%s", temp->title);
+      wmove(window, ++lineNo, 1);
+    }
+    taskNo++;
     temp = temp->nextTask;
-    wmove(window, ++taskNo + 1, 1);
   }
   wrefresh(window);
 }
@@ -94,6 +105,7 @@ void printDesc(Task *task, WINDOW *window) {
   printTitle(window, "Description");
   wmove(window, 1, 1);
   printWrapped(task->desc, window, 1, 1);
+  wprintw(window, "Group: %s", task->group);
   wrefresh(window);
 }
 
@@ -178,6 +190,7 @@ Group *selectGroup(Group **groups, WINDOW *window, unsigned int *size) {
   int selectedGroupNo = -1;
   while (selecting) {
     printGroups(window, *groups, currentGroupNo);
+    selectedGroupNo = -1;
     keyPress = getch();
     switch (keyPress) {
     case KEY_UP:
@@ -206,14 +219,14 @@ Group *selectGroup(Group **groups, WINDOW *window, unsigned int *size) {
     } else if (selectedGroupNo > 1) {
       selecting = false;
     }
-    selectedGroupNo = -1;
   }
-  return getGroup(*groups, selectedGroupNo);
+  return getGroup(*groups, selectedGroupNo - 2);
 }
 
 Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
                  unsigned int *groupListSize) {
   Task *newTask = (Task *)malloc(sizeof(Task));
+  Group *newGroup = NULL;
   wclear(menuWindow);
   wclear(detailWindow);
   box(menuWindow, 0, 0);
@@ -254,8 +267,9 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
       wgetnstr(detailWindow, newTask->desc, sizeof(newTask->desc));
       curs_set(0);
     } else if (selectedItemNo == 2) {
-      strcpy(newTask->group,
-             selectGroup(groups, detailWindow, groupListSize)->name);
+      newGroup = selectGroup(groups, detailWindow, groupListSize);
+      if (newGroup != NULL)
+        strcpy(newTask->group, newGroup->name);
     } else if (selectedItemNo == 4) {
       wclear(detailWindow);
       box(detailWindow, 0, 0);
@@ -335,13 +349,20 @@ Task *getTask(Task *head, int taskNo) {
   return temp;
 }
 
+bool taskInGroup(Task *head, char *group, unsigned int taskNo) {
+  Task *task = getTask(head, taskNo);
+  if (strcmp(group, "") == 0 || strcmp(task->group, group) == 0)
+    return true;
+  return false;
+}
+
 int main() {
   Task *taskHead = NULL, *newTask;
   Group *groupHead = NULL, *newGroup;
 
   int choice;
   bool deleteMode = false, run = true;
-  char title[32], desc[128];
+  char title[32], desc[128], group[32] = "Pop";
   unsigned int size = 0, currentTaskNo = 0, task = 0, groupListSize = 0;
 
   initscr();
@@ -359,21 +380,29 @@ int main() {
   wrefresh(descWindow);
 
   while (run) {
-    printTasks(taskHead, taskWindow, currentTaskNo);
+    printTasks(taskHead, taskWindow, currentTaskNo, group);
     choice = getch();
     switch (choice) {
     case KEY_UP:
-      if (currentTaskNo == 0)
-        currentTaskNo = size - 1;
-      else
-        currentTaskNo--;
+      for (int i = 0; i < size; i++) {
+        if (currentTaskNo == 0)
+          currentTaskNo = size - 1;
+        else
+          currentTaskNo--;
+        if (taskInGroup(taskHead, group, currentTaskNo))
+          break;
+      }
       printDesc(getTask(taskHead, currentTaskNo), descWindow);
       break;
     case KEY_DOWN:
-      if (currentTaskNo == size - 1)
-        currentTaskNo = 0;
-      else
-        currentTaskNo++;
+      for (int i = 0; i < size; i++) {
+        if (currentTaskNo == size - 1)
+          currentTaskNo = 0;
+        else
+          currentTaskNo++;
+        if (taskInGroup(taskHead, group, currentTaskNo))
+          break;
+      }
       printDesc(getTask(taskHead, currentTaskNo), descWindow);
       break;
     case KEY_F(1):
@@ -386,6 +415,13 @@ int main() {
       if (size != 0)
         deleteMode = true;
       break;
+    case KEY_F(3):
+      newGroup = selectGroup(&groupHead, descWindow, &groupListSize);
+      if (size != 0 && newGroup != NULL) {
+        strcpy(group, newGroup->name);
+      } else {
+        strcpy(group, "");
+      }
     case 10: // ENTER
       task = currentTaskNo;
       break;
