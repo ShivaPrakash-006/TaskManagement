@@ -22,10 +22,10 @@ Create A Task Manager for Your Daily needs.
 - [ ] Link tasks (Graphs).
 - [ ] Set deadlines for tasks.
 - [ ] Set priority for tasks.
-- [ ] Different Views:
-  - [ ] All
-  - [ ] Group
-  - [ ] Filter
+- [x] Different Views:
+  - [x] All
+  - [x] Group
+  - [x] Filter
 - [ ] Sort By Deadlines/Priority.
 - [ ] Sub Tasks(?).
 - [ ] Set Tasks Active/Inactive.

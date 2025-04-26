@@ -54,17 +54,19 @@ void printWrapped(char *text, WINDOW *window, int startx, int starty) {
   wmove(window, y, startx);
 }
 
-void printTasks(Task *head, WINDOW *window, int currentTaskNo, char *group) {
+void printTasks(Task *head, WINDOW *window, int currentTaskNo, char *group,
+                char *filterStr) {
   Task *temp = head;
   int taskNo = 0;
-  int lineNo = 1;
+  int lineNo = 3;
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Tasks");
-  wmove(window, 1, 1);
+  mvwprintw(window, 1, 1, "Search (/): ");
+  wmove(window, 3, 1);
   while (temp != NULL) {
     if ((strcmp(temp->group, "") != 0 && strcmp(temp->group, group) == 0) ||
-        strcmp(group, "") == 0) {
+        strcmp(group, "") == 0 && strcasestr(temp->title, filterStr) != NULL) {
       if (currentTaskNo == taskNo) {
         wattron(window, A_STANDOUT);
         wprintw(window, "%s", temp->title);
@@ -132,14 +134,16 @@ void printField(WINDOW *window, Task *task, int fieldNo) {
   wrefresh(window);
 }
 
-void printGroups(WINDOW *window, Group *groups, int currentGroupNo) {
+void printGroups(WINDOW *window, Group *groups, int currentGroupNo,
+                 char *filterStr) {
   Group *group = groups;
   char *items[] = {"Create", "Cancel"};
-  int groupNo = 0;
+  int lineNo = 3, groupNo = 0;
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Groups");
-  wmove(window, 1, 1);
+  mvwprintw(window, 1, 1, "Search (/): ");
+  wmove(window, 3, 1);
   while (group != NULL || groupNo < 2) {
     if (groupNo < 2) {
       if (currentGroupNo == groupNo) {
@@ -149,21 +153,27 @@ void printGroups(WINDOW *window, Group *groups, int currentGroupNo) {
       } else {
         wprintw(window, "%s", items[groupNo]);
       }
+      wmove(window, ++lineNo, 1);
     } else {
-      if (currentGroupNo == groupNo) {
-        wattron(window, A_STANDOUT);
-        wprintw(window, "%s", group->name);
-        wattroff(window, A_STANDOUT);
-      } else
-        wprintw(window, "%s", group->name);
+      if (strcasestr(group->name, filterStr) != NULL) {
+        if (currentGroupNo == groupNo) {
+          wattron(window, A_STANDOUT);
+          wprintw(window, "%s", group->name);
+          wattroff(window, A_STANDOUT);
+        } else
+          wprintw(window, "%s", group->name);
+        wmove(window, ++lineNo, 1);
+      }
       group = group->nextGroup;
     }
-    wmove(window, ++groupNo + 1, 1);
+    groupNo++;
   }
   wrefresh(window);
 }
 
 void createGroup(Group **head, WINDOW *window) {
+  echo();
+  curs_set(1);
   clearWindow(window);
   printTitle(window, "Create Group");
   Group *newGroup = (Group *)malloc(sizeof(Group));
@@ -172,6 +182,8 @@ void createGroup(Group **head, WINDOW *window) {
   // Inserting
   newGroup->nextGroup = *head;
   *head = newGroup;
+  noecho();
+  curs_set(0);
 }
 
 Group *getGroup(Group *groups, int groupNo) {
@@ -184,31 +196,62 @@ Group *getGroup(Group *groups, int groupNo) {
   return temp;
 }
 
+bool filterGroup(Group *groups, char *filterStr, unsigned int groupNo) {
+  Group *group = getGroup(groups, groupNo - 2);
+  return strcasestr(group->name, filterStr) != NULL;
+}
+
 Group *selectGroup(Group **groups, WINDOW *window, unsigned int *size) {
-  bool selecting = true;
+  bool selecting = true, searching = false;
   int currentGroupNo = 0, keyPress;
   int selectedGroupNo = -1;
+  char filterStr[32] = "";
   while (selecting) {
-    printGroups(window, *groups, currentGroupNo);
+    printGroups(window, *groups, currentGroupNo, filterStr);
     selectedGroupNo = -1;
     keyPress = getch();
     switch (keyPress) {
     case KEY_UP:
-      if (currentGroupNo != 0)
-        currentGroupNo--;
-      else
-        currentGroupNo = (*size) + 1;
+      for (int i = 0; i < (*size) + 1; i++) {
+        if (currentGroupNo != 0)
+          currentGroupNo--;
+        else
+          currentGroupNo = (*size) + 1;
+        if (currentGroupNo == 0 || currentGroupNo == 1 ||
+            filterGroup(*groups, filterStr, currentGroupNo))
+          break;
+      }
+      break;
+    case KEY_DOWN:
+      for (int i = 0; i < (*size) + 1; i++) {
+        if (currentGroupNo != (*size) + 1)
+          currentGroupNo++;
+        else
+          currentGroupNo = 0;
+        if (currentGroupNo == 0 || currentGroupNo == 1 ||
+            filterGroup(*groups, filterStr, currentGroupNo))
+          break;
+      }
       break;
 
-    case KEY_DOWN:
-      if (currentGroupNo != (*size) + 1)
-        currentGroupNo++;
-      else
-        currentGroupNo = 0;
+    case '/':
+      searching = true;
       break;
+
     case 10:
       selectedGroupNo = currentGroupNo;
       break;
+    }
+
+    if (searching) {
+      echo();
+      curs_set(1);
+      mvwprintw(window, 1, 1, "Search (/): ");
+      wgetnstr(window, filterStr, 32);
+      wrefresh(window);
+      searching = false;
+      curs_set(0);
+      noecho();
     }
 
     if (selectedGroupNo == 0) {
@@ -225,6 +268,7 @@ Group *selectGroup(Group **groups, WINDOW *window, unsigned int *size) {
 
 Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
                  unsigned int *groupListSize) {
+  echo();
   Task *newTask = (Task *)malloc(sizeof(Task));
   Group *newGroup = NULL;
   wclear(menuWindow);
@@ -270,19 +314,23 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
       newGroup = selectGroup(groups, detailWindow, groupListSize);
       if (newGroup != NULL)
         strcpy(newTask->group, newGroup->name);
+      echo();
     } else if (selectedItemNo == 4) {
       wclear(detailWindow);
       box(detailWindow, 0, 0);
-      printTitle(detailWindow, "Delete");
+      printTitle(detailWindow, "Cancel?");
       mvwprintw(detailWindow, 1, 1, "Are you sure? (y/n)");
       char choice = wgetch(detailWindow);
 
-      if (choice == 'y')
+      if (choice == 'y') {
+        noecho();
         return NULL;
+      }
     }
     selectedItemNo = -1;
   }
   newTask->nextTask = NULL;
+  noecho();
   return newTask;
 }
 
@@ -351,9 +399,12 @@ Task *getTask(Task *head, int taskNo) {
 
 bool taskInGroup(Task *head, char *group, unsigned int taskNo) {
   Task *task = getTask(head, taskNo);
-  if (strcmp(group, "") == 0 || strcmp(task->group, group) == 0)
-    return true;
-  return false;
+  return (strcmp(group, "") == 0 || strcmp(task->group, group) == 0);
+}
+
+bool filterTask(Task *head, char *filterStr, unsigned int taskNo) {
+  Task *task = getTask(head, taskNo);
+  return strcasestr(task->title, filterStr) != NULL;
 }
 
 int main() {
@@ -361,13 +412,14 @@ int main() {
   Group *groupHead = NULL, *newGroup;
 
   int choice;
-  bool deleteMode = false, run = true;
-  char title[32], desc[128], group[32] = "Pop";
+  bool deleteMode = false, run = true, searching = false;
+  char title[32], desc[128], group[32] = "", filterStr[32] = "Ba";
   unsigned int size = 0, currentTaskNo = 0, task = 0, groupListSize = 0;
 
   initscr();
   keypad(stdscr, true);
   cbreak();
+  noecho();
   curs_set(0);
   WINDOW *taskWindow = newwin(LINES, COLS / 2, 0, 0);
   WINDOW *descWindow = newwin(LINES, COLS / 2, 0, COLS / 2);
@@ -380,7 +432,7 @@ int main() {
   wrefresh(descWindow);
 
   while (run) {
-    printTasks(taskHead, taskWindow, currentTaskNo, group);
+    printTasks(taskHead, taskWindow, currentTaskNo, group, filterStr);
     choice = getch();
     switch (choice) {
     case KEY_UP:
@@ -389,7 +441,8 @@ int main() {
           currentTaskNo = size - 1;
         else
           currentTaskNo--;
-        if (taskInGroup(taskHead, group, currentTaskNo))
+        if (taskInGroup(taskHead, group, currentTaskNo) &&
+            filterTask(taskHead, filterStr, currentTaskNo))
           break;
       }
       printDesc(getTask(taskHead, currentTaskNo), descWindow);
@@ -400,7 +453,8 @@ int main() {
           currentTaskNo = 0;
         else
           currentTaskNo++;
-        if (taskInGroup(taskHead, group, currentTaskNo))
+        if (taskInGroup(taskHead, group, currentTaskNo) &&
+            filterTask(taskHead, filterStr, currentTaskNo))
           break;
       }
       printDesc(getTask(taskHead, currentTaskNo), descWindow);
@@ -425,6 +479,11 @@ int main() {
     case 10: // ENTER
       task = currentTaskNo;
       break;
+
+    case '/':
+      searching = true;
+      break;
+
     case KEY_F(10):
       run = false;
       break;
@@ -436,6 +495,17 @@ int main() {
         currentTaskNo--;
       size--;
       deleteMode = false;
+    }
+
+    if (searching) {
+      echo();
+      curs_set(1);
+      mvwprintw(taskWindow, 1, 1, "Search (/): ");
+      wgetnstr(taskWindow, filterStr, 32);
+      wrefresh(taskWindow);
+      searching = false;
+      curs_set(0);
+      noecho();
     }
   }
   endwin();
