@@ -28,7 +28,7 @@ typedef struct Task {
   char desc[512];
   char group[32];
   bool completed;
-  struct tm *deadline;
+  struct tm deadline;
   Priority priority;
   struct Task *linkedTasks;
   struct Task *nextTask;
@@ -122,7 +122,7 @@ void printDesc(Task *task, WINDOW *window) {
   printWrapped(task->desc, window, 1, 1);
   int y = sizeof(task->desc) / getmaxx(window);
   mvwprintw(window, ++y, 1, "Group: %s", task->group);
-  mvwprintw(window, ++y, 1, "Deadline: %s", asctime(task->deadline));
+  mvwprintw(window, ++y, 1, "Deadline: %s", asctime(&task->deadline));
   mvwprintw(window, ++y, 1, "Priority: %s", priorityToStr(task->priority));
 
   wrefresh(window);
@@ -146,7 +146,7 @@ void printField(WINDOW *window, Task *task, int fieldNo) {
     break;
 
   case 3:
-    wprintw(window, "%s", asctime(task->deadline));
+    wprintw(window, "%s", asctime(&task->deadline));
     break;
 
   case 4:
@@ -337,7 +337,7 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
   echo();
   Task *newTask = (Task *)malloc(sizeof(Task));
   time_t currRawTime = time(NULL);
-  newTask->deadline = localtime(&currRawTime);
+  memcpy(&newTask->deadline, localtime(&currRawTime), sizeof(struct tm));
   newTask->priority = Normal;
   Group *newGroup = NULL;
   wclear(menuWindow);
@@ -390,13 +390,13 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
       wprintw(detailWindow, "(DD-MM-YY HH:MM): ");
       int day, month, year, hr, min;
       wscanw(detailWindow, "%d-%d-%d %d:%d", &day, &month, &year, &hr, &min);
-      newTask->deadline->tm_mday = day;
-      newTask->deadline->tm_mon = month - 1;
-      newTask->deadline->tm_year = 100 + year;
-      newTask->deadline->tm_hour = hr;
-      newTask->deadline->tm_min = min;
-      newTask->deadline->tm_sec = 0;
-      mktime(newTask->deadline);
+      newTask->deadline.tm_mday = day;
+      newTask->deadline.tm_mon = month - 1;
+      newTask->deadline.tm_year = 100 + year;
+      newTask->deadline.tm_hour = hr;
+      newTask->deadline.tm_min = min;
+      newTask->deadline.tm_sec = 0;
+      mktime(&newTask->deadline);
       curs_set(0);
     } else if (selectedItemNo == 4) {
       newTask->priority = selectPriority(detailWindow);
@@ -422,10 +422,27 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
 void insert(Task **head, Task *newTask) {
   if (*head == NULL)
     *head = newTask;
-  else {
+
+  else if ((*head)->priority > newTask->priority) {
+    newTask->nextTask = *head;
+    *head = newTask;
+  } else if ((*head)->priority == newTask->priority &&
+             difftime(mktime(&newTask->deadline), mktime(&(*head)->deadline)) <
+                 0) {
+    newTask->nextTask = *head;
+    *head = newTask;
+  } else {
     Task *temp = *head;
-    while (temp->nextTask != NULL)
+    while (temp->nextTask != NULL) {
+      if (newTask->priority < temp->nextTask->priority)
+        break;
+      else if (newTask->priority == temp->nextTask->priority)
+        if (difftime(mktime(&newTask->deadline),
+                     mktime(&temp->nextTask->deadline)) < 0)
+          break;
       temp = temp->nextTask;
+    }
+    newTask->nextTask = temp->nextTask;
     temp->nextTask = newTask;
   }
 }

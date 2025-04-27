@@ -26,8 +26,9 @@ Create A Task Manager for Your Daily needs.
   - [x] All
   - [x] Group
   - [x] Filter
+  - [-] Priority
 - [ ] Edit Tasks.
-- [-] Sort By Deadlines/Priority.
+- [x] Sort By Deadlines/Priority.
 - [ ] Sub Tasks(?).
 - [ ] Set Tasks Active/Inactive.
 - [ ] Persistent Storage.
