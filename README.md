@@ -20,8 +20,8 @@ Create A Task Manager for Your Daily needs.
   - [x] Create and Assign Groups
   - [x] Filter by Group
 - [ ] Link tasks (Graphs).
-- [ ] Set deadlines for tasks.
-- [ ] Set priority for tasks.
+- [x] Set deadlines for tasks.
+- [-] Set priority for tasks.
 - [x] Different Views:
   - [x] All
   - [x] Group

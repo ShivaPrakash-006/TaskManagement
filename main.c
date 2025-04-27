@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 typedef enum Priority { Urgent = 1, Normal = 2, Casual = 3 } Priority;
 
@@ -16,6 +17,7 @@ typedef struct Task {
   char desc[512];
   char group[32];
   bool completed;
+  struct tm *deadline;
   Priority priority;
   struct Task *linkedTasks;
   struct Task *nextTask;
@@ -82,8 +84,9 @@ void printTasks(Task *head, WINDOW *window, int currentTaskNo, char *group,
 }
 
 void printInsertMenu(WINDOW *window, int currentItemNo) {
-  char *items[] = {"Title", "Description", "Group", "Add", "Cancel"};
-  int noOfItems = 5;
+  char *items[] = {"Title",    "Description", "Group", "Deadline",
+                   "Priority", "Add",         "Cancel"};
+  int noOfItems = 7;
   int itemNo = 0;
   wclear(window);
   box(window, 0, 0);
@@ -105,9 +108,11 @@ void printDesc(Task *task, WINDOW *window) {
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Description");
-  wmove(window, 1, 1);
   printWrapped(task->desc, window, 1, 1);
-  wprintw(window, "Group: %s", task->group);
+  int y = sizeof(task->desc) / getmaxx(window);
+  mvwprintw(window, ++y, 1, "Group: %s", task->group);
+  mvwprintw(window, ++y, 1, "Deadline: %s", asctime(task->deadline));
+
   wrefresh(window);
 }
 
@@ -129,6 +134,14 @@ void printField(WINDOW *window, Task *task, int fieldNo) {
     break;
 
   case 3:
+    wprintw(window, "%s", asctime(task->deadline));
+    break;
+
+  case 4:
+    wprintw(window, "%i", task->priority);
+    break;
+
+  case 5:
     wprintw(window, "Add Task");
   }
   wrefresh(window);
@@ -270,6 +283,8 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
                  unsigned int *groupListSize) {
   echo();
   Task *newTask = (Task *)malloc(sizeof(Task));
+  time_t currRawTime = time(NULL);
+  newTask->deadline = localtime(&currRawTime);
   Group *newGroup = NULL;
   wclear(menuWindow);
   wclear(detailWindow);
@@ -290,7 +305,7 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
       printField(detailWindow, newTask, currentItemNo);
       break;
     case KEY_DOWN:
-      if (currentItemNo != 4)
+      if (currentItemNo != 6)
         currentItemNo++;
       printField(detailWindow, newTask, currentItemNo);
       break;
@@ -298,7 +313,7 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
       selectedItemNo = currentItemNo;
       break;
     }
-    if (selectedItemNo == 3)
+    if (selectedItemNo == 5)
       creating = false;
     else if (selectedItemNo == 0) {
       curs_set(1);
@@ -315,7 +330,21 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
       if (newGroup != NULL)
         strcpy(newTask->group, newGroup->name);
       echo();
-    } else if (selectedItemNo == 4) {
+    } else if (selectedItemNo == 3) {
+      curs_set(1);
+      wmove(detailWindow, 1, 1);
+      wprintw(detailWindow, "(DD-MM-YY HH:MM): ");
+      int day, month, year, hr, min;
+      wscanw(detailWindow, "%d-%d-%d %d:%d", &day, &month, &year, &hr, &min);
+      newTask->deadline->tm_mday = day;
+      newTask->deadline->tm_mon = month - 1;
+      newTask->deadline->tm_year = 100 + year;
+      newTask->deadline->tm_hour = hr;
+      newTask->deadline->tm_min = min;
+      newTask->deadline->tm_sec = 0;
+      mktime(newTask->deadline);
+      curs_set(0);
+    } else if (selectedItemNo == 6) {
       wclear(detailWindow);
       box(detailWindow, 0, 0);
       printTitle(detailWindow, "Cancel?");
@@ -413,7 +442,7 @@ int main() {
 
   int choice;
   bool deleteMode = false, run = true, searching = false;
-  char title[32], desc[128], group[32] = "", filterStr[32] = "Ba";
+  char title[32], desc[128], group[32] = "", filterStr[32] = "";
   unsigned int size = 0, currentTaskNo = 0, task = 0, groupListSize = 0;
 
   initscr();
