@@ -68,7 +68,8 @@ void printWrapped(char *text, WINDOW *window, int startx, int starty) {
 }
 
 void printTasks(Task *head, WINDOW *window, int currentTaskNo, char *group,
-                char *filterStr) {
+                char *filterStr, int sortedPriority) {
+
   Task *temp = head;
   int taskNo = 0;
   int lineNo = 3;
@@ -79,7 +80,8 @@ void printTasks(Task *head, WINDOW *window, int currentTaskNo, char *group,
   wmove(window, 3, 1);
   while (temp != NULL) {
     if ((strcmp(temp->group, "") != 0 && strcmp(temp->group, group) == 0) ||
-        strcmp(group, "") == 0 && strcasestr(temp->title, filterStr) != NULL) {
+        strcmp(group, "") == 0 && strcasestr(temp->title, filterStr) != NULL &&
+            (sortedPriority == -1 || temp->priority == sortedPriority)) {
       if (currentTaskNo == taskNo) {
         wattron(window, A_STANDOUT);
         wprintw(window, "%s", temp->title);
@@ -509,6 +511,14 @@ bool filterTask(Task *head, char *filterStr, unsigned int taskNo) {
   return strcasestr(task->title, filterStr) != NULL;
 }
 
+bool taskPriority(Task *head, int priority, unsigned int taskNo) {
+  if (priority == -1)
+    return true;
+  else if (priority == getTask(head, taskNo)->priority)
+    return true;
+  return false;
+}
+
 int main() {
   Task *taskHead = NULL, *newTask;
   Group *groupHead = NULL, *newGroup;
@@ -516,6 +526,7 @@ int main() {
   int choice;
   bool deleteMode = false, run = true, searching = false;
   char title[32], desc[128], group[32] = "", filterStr[32] = "";
+  int sortedPriority = -1;
   unsigned int size = 0, currentTaskNo = 0, task = 0, groupListSize = 0;
 
   initscr();
@@ -534,7 +545,8 @@ int main() {
   wrefresh(descWindow);
 
   while (run) {
-    printTasks(taskHead, taskWindow, currentTaskNo, group, filterStr);
+    printTasks(taskHead, taskWindow, currentTaskNo, group, filterStr,
+               sortedPriority);
     choice = getch();
     switch (choice) {
     case KEY_UP:
@@ -544,7 +556,8 @@ int main() {
         else
           currentTaskNo--;
         if (taskInGroup(taskHead, group, currentTaskNo) &&
-            filterTask(taskHead, filterStr, currentTaskNo))
+            filterTask(taskHead, filterStr, currentTaskNo) &&
+            taskPriority(taskHead, sortedPriority, currentTaskNo))
           break;
       }
       printDesc(getTask(taskHead, currentTaskNo), descWindow);
@@ -556,7 +569,8 @@ int main() {
         else
           currentTaskNo++;
         if (taskInGroup(taskHead, group, currentTaskNo) &&
-            filterTask(taskHead, filterStr, currentTaskNo))
+            filterTask(taskHead, filterStr, currentTaskNo) &&
+            taskPriority(taskHead, sortedPriority, currentTaskNo))
           break;
       }
       printDesc(getTask(taskHead, currentTaskNo), descWindow);
@@ -578,6 +592,10 @@ int main() {
       } else {
         strcpy(group, "");
       }
+    case KEY_F(4):
+      sortedPriority = selectPriority(descWindow);
+      break;
+
     case 10: // ENTER
       task = currentTaskNo;
       break;
