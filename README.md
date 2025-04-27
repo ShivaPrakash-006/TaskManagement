@@ -34,7 +34,7 @@ Create A Task Manager for Your Daily needs.
   - [x] Deadlines
   - [x] Priority
 - [x] Set Tasks Pending/Completed.
-- [ ] Persistent Storage.
+- [x] Persistent Storage.
 
 ## IMPLEMENTATION/ALGORITHM/GENERAL IDEA
 

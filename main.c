@@ -1,6 +1,4 @@
-#include <cjson/cJSON.h>
 #include <ncurses.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,12 +31,10 @@ char *sortToStr(Sort sortingMethod) {
 
 typedef struct Task {
   char title[32];
-  char desc[512];
+  char desc[256];
   char group[32];
   struct tm deadline;
   Priority priority;
-  bool completed;
-  struct Task *linkedTasks;
   struct Task *nextTask;
 } Task;
 
@@ -735,13 +731,100 @@ void moveTask(Task **destHead, Task **sourceHead, uint taskNo) {
   insert(destHead, task);
 }
 
+struct tm *strptime(char *str, struct tm *time) {
+  int day, month, year, hr, min;
+  sscanf(str, "%d-%d-%d %d:%d", &day, &month, &year, &hr, &min);
+  time->tm_mday = day;
+  time->tm_mon = month - 1;
+  time->tm_year = 100 + year;
+  time->tm_hour = hr;
+  time->tm_min = min;
+  time->tm_sec = 0;
+  mktime(time);
+  return time;
+}
+
+void load(Task **pendingHead, Task **completeHead, Group **groupHead,
+          uint *pSize, uint *cSize, uint *gSize) {
+  FILE *pendingFile = fopen("pending.txt", "r");
+  char buffer[sizeof(Task)];
+  while (fgets(buffer, sizeof(buffer), pendingFile)) {
+    Task *newTask = (Task *)malloc(sizeof(Task));
+    char deadline[32];
+    sscanf(buffer, "%[^;];%[^;];%[^;];%[^;];%i\n", newTask->title,
+           newTask->desc, newTask->group, deadline, &newTask->priority);
+    strptime(deadline, &newTask->deadline);
+    newTask->nextTask = *pendingHead;
+    *pendingHead = newTask;
+    (*pSize)++;
+  }
+  fclose(pendingFile);
+  FILE *completedFile = fopen("completed.txt", "r");
+  while (fgets(buffer, sizeof(buffer), completedFile)) {
+    Task *newTask = (Task *)malloc(sizeof(Task));
+    char deadline[32];
+    sscanf(buffer, "%[^;];%[^;];%[^;];%[^;];%i\n", newTask->title,
+           newTask->desc, newTask->group, deadline, &newTask->priority);
+    strptime(deadline, &newTask->deadline);
+    newTask->nextTask = *completeHead;
+    *completeHead = newTask;
+    (*cSize)++;
+  }
+  fclose(completedFile);
+  FILE *groupFile = fopen("groups.txt", "r");
+  while (fgets(buffer, sizeof(buffer), groupFile)) {
+    Group *newGroup = (Group *)malloc(sizeof(Group));
+    sscanf(buffer, "%[^\n]\n", newGroup->name);
+    newGroup->nextGroup = *groupHead;
+    *groupHead = newGroup;
+    (*gSize)++;
+  }
+  fclose(groupFile);
+}
+
+void quit(Task **pendingHead, Task **completeHead, Group **groupHead) {
+  FILE *pendingFile = fopen("pending.txt", "w");
+  Task *temp = *pendingHead;
+  while (temp != NULL) {
+    char deadline[32];
+    strftime(deadline, sizeof(deadline), "%d-%m-%y %H:%M", &temp->deadline);
+    fprintf(pendingFile, "%s;%s;%s;%s;%i\n", temp->title, temp->desc,
+            temp->group, deadline, temp->priority);
+    Task *toFree = temp;
+    temp = temp->nextTask;
+    free(toFree);
+  }
+  fclose(pendingFile);
+  FILE *completedFile = fopen("completed.txt", "w");
+  temp = *completeHead;
+  while (temp != NULL) {
+    char deadline[32];
+    strftime(deadline, sizeof(deadline), "%d-%m-%y %H:%M", &temp->deadline);
+    fprintf(completedFile, "%s;%s;%s;%s;%i\n", temp->title, temp->desc,
+            temp->group, deadline, temp->priority);
+    Task *toFree = temp;
+    temp = temp->nextTask;
+    free(toFree);
+  }
+  fclose(completedFile);
+  FILE *groupFile = fopen("groups.txt", "w");
+  Group *gTemp = *groupHead;
+  while (gTemp != NULL) {
+    fprintf(groupFile, "%s\n", gTemp->name);
+    Group *toFree = gTemp;
+    gTemp = gTemp->nextGroup;
+    free(toFree);
+  }
+  fclose(groupFile);
+}
+
 int main() {
   Task *pendingTaskHead = NULL, *completedTaskHead = NULL;
+  Group *groupHead = NULL, *newGroup;
   Task **currentTaskHead = &pendingTaskHead,
        **inactiveTaskHead = &completedTaskHead;
   Task *currentTask, *newTask;
   int active = 0; // 0 for pending, 1 for completed
-  Group *groupHead = NULL, *newGroup;
 
   int choice;
   bool deleteMode = false, run = true, searching = false;
@@ -749,7 +832,11 @@ int main() {
   int sortedPriority = -1, detailNo = -1;
   uint pSize = 0, cSize = 0, *aSize = &pSize, *iSize = &cSize,
        currentTaskNo = 0, groupListSize = 0;
+  load(&pendingTaskHead, &completedTaskHead, &groupHead, &pSize, &cSize,
+       &groupListSize);
   TaskComparator cmpFunction = comparePriority;
+  pendingTaskHead = mergeSort(pendingTaskHead, cmpFunction);
+  completedTaskHead = mergeSort(completedTaskHead, cmpFunction);
 
   initscr();
   keypad(stdscr, true);
@@ -818,7 +905,7 @@ int main() {
       currentTaskNo = 0;
       break;
 
-    case KEY_F(1):
+    case 'n':
       newTask =
           createTask(taskWindow, detailWindow, &groupHead, &groupListSize);
       if (newTask) {
@@ -837,14 +924,15 @@ int main() {
       curs_set(0);
       noecho();
       break;
-    case KEY_F(3):
+    case 'g':
       newGroup = selectGroup(&groupHead, detailWindow, &groupListSize);
       if (aSize != 0 && newGroup != NULL) {
         strcpy(group, newGroup->name);
       } else {
         strcpy(group, "");
       }
-    case KEY_F(4):
+      break;
+    case 'p':
       sortedPriority = selectPriority(detailWindow);
       break;
 
@@ -867,6 +955,7 @@ int main() {
       break;
 
     case 'q':
+      quit(&pendingTaskHead, &completedTaskHead, &groupHead);
       run = false;
       break;
     }
