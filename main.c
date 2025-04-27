@@ -1,5 +1,6 @@
 #include <cjson/cJSON.h>
 #include <ncurses.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,7 +9,6 @@
 
 typedef enum Priority { Urgent = 0, Normal = 1, Casual = 2 } Priority;
 typedef enum Sort { Prior = 0, Name = 1, Deadline = 2 } Sort;
-typedef enum Status { Pending = 0, Progress = 1, Completed = 2 } Status;
 
 char *priorityToStr(Priority priority) {
   if (priority == Urgent)
@@ -37,7 +37,7 @@ typedef struct Task {
   char group[32];
   struct tm deadline;
   Priority priority;
-  Status status;
+  bool completed;
   struct Task *linkedTasks;
   struct Task *nextTask;
 } Task;
@@ -45,7 +45,7 @@ typedef struct Task {
 Task *getTask(Task *head, int taskNo) {
   int i = 0;
   Task *temp = head;
-  while (i != taskNo) {
+  while (i < taskNo) {
     temp = temp->nextTask;
     i++;
   }
@@ -163,7 +163,7 @@ void printInsertMenu(WINDOW *window, int currentItemNo) {
   wrefresh(window);
 }
 
-void printDetails(Task *task, WINDOW *window, uint detailNo) {
+void printDetails(Task *task, WINDOW *window, uint detailNo, int active) {
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Description");
@@ -188,7 +188,10 @@ void printDetails(Task *task, WINDOW *window, uint detailNo) {
   wattroff(window, A_STANDOUT);
   if (detailNo == 4)
     wattron(window, A_STANDOUT);
-  mvwprintw(window, ++y + 1, 1, "Mark as Completed");
+  if (!active)
+    mvwprintw(window, ++y + 1, 1, "Mark as Completed");
+  else
+    mvwprintw(window, ++y + 1, 1, "Mark as Pending");
   wattroff(window, A_STANDOUT);
 
   wrefresh(window);
@@ -613,13 +616,13 @@ Task *mergeSort(Task *head, TaskComparator cmp) {
   return merge(head, second, cmp);
 }
 
-int selectDetail(WINDOW *window, Task *task) {
+int selectDetail(WINDOW *window, Task *task, int active) {
   int currentDetailNo = 0;
   bool selecting = true;
   int keyPress;
 
   while (selecting) {
-    printDetails(task, window, currentDetailNo);
+    printDetails(task, window, currentDetailNo, active);
     keyPress = getch();
     switch (keyPress) {
     case KEY_UP:
@@ -651,13 +654,16 @@ void insert(Task **head, Task *newTask) {
 }
 
 void delete(Task **head, int pos, WINDOW *window) {
-  wclear(window);
-  box(window, 0, 0);
-  printTitle(window, "Delete");
-  mvwprintw(window, 1, 1, "Are you sure? (y/n)");
-  char choice = wgetch(window);
-
-  if (*head == NULL || choice != 'y') // Empty
+  if (window != NULL) {
+    wclear(window);
+    box(window, 0, 0);
+    printTitle(window, "Delete");
+    mvwprintw(window, 1, 1, "Are you sure? (y/n)");
+    char choice = wgetch(window);
+    if (choice != 'y')
+      return;
+  }
+  if (*head == NULL) // Empty
     return;
 
   else if ((*head)->nextTask == NULL) {
@@ -692,16 +698,57 @@ void delete(Task **head, int pos, WINDOW *window) {
   }
 }
 
+void moveTask(Task **destHead, Task **sourceHead, uint taskNo) {
+  Task *task;
+  if (*sourceHead == NULL) // Empty
+    return;
+
+  else if ((*sourceHead)->nextTask == NULL) {
+    task = *sourceHead;
+    *sourceHead = NULL;
+  }
+
+  else if (taskNo == 0) { // Delete Beginning
+    task = *sourceHead;
+    *sourceHead = (*sourceHead)->nextTask;
+  }
+
+  else if (taskNo == -1) { // Delete End
+    Task *temp = *sourceHead;
+    while (temp->nextTask->nextTask != NULL)
+      temp = temp->nextTask;
+    task = temp->nextTask;
+    temp->nextTask = NULL;
+  }
+
+  else if (taskNo > 0) { // Delete Middle
+    Task *temp = *sourceHead;
+    int i = 1;
+    while (i < taskNo && temp->nextTask->nextTask != NULL) {
+      temp = temp->nextTask;
+      i++;
+    }
+    task = temp->nextTask;
+    temp->nextTask = temp->nextTask->nextTask;
+  }
+  task->nextTask = NULL;
+  insert(destHead, task);
+}
+
 int main() {
-  Task *pendingTaskHead = NULL, *completedTaskHead = NULL, *currentTask,
-       *newTask;
+  Task *pendingTaskHead = NULL, *completedTaskHead = NULL;
+  Task **currentTaskHead = &pendingTaskHead,
+       **inactiveTaskHead = &completedTaskHead;
+  Task *currentTask, *newTask;
+  int active = 0; // 0 for pending, 1 for completed
   Group *groupHead = NULL, *newGroup;
 
   int choice;
   bool deleteMode = false, run = true, searching = false;
   char title[32], desc[128], group[32] = "", filterStr[32] = "";
   int sortedPriority = -1, detailNo = -1;
-  uint size = 0, currentTaskNo = 0, groupListSize = 0;
+  uint pSize = 0, cSize = 0, *aSize = &pSize, *iSize = &cSize,
+       currentTaskNo = 0, groupListSize = 0;
   TaskComparator cmpFunction = comparePriority;
 
   initscr();
@@ -720,46 +767,65 @@ int main() {
   wrefresh(detailWindow);
 
   while (run) {
-    printTasks(pendingTaskHead, taskWindow, currentTaskNo, group, filterStr,
+    printTasks(*currentTaskHead, taskWindow, currentTaskNo, group, filterStr,
                sortedPriority);
     choice = getch();
     switch (choice) {
     case KEY_UP:
-      for (int i = 0; i < size; i++) {
+      for (int i = 0; i < *aSize; i++) {
         if (currentTaskNo == 0)
-          currentTaskNo = size - 1;
+          currentTaskNo = (*aSize) - 1;
         else
           currentTaskNo--;
-        if (taskInGroup(pendingTaskHead, group, currentTaskNo) &&
-            filterTask(pendingTaskHead, filterStr, currentTaskNo) &&
-            taskPriority(pendingTaskHead, sortedPriority, currentTaskNo))
+        if (taskInGroup(*currentTaskHead, group, currentTaskNo) &&
+            filterTask(*currentTaskHead, filterStr, currentTaskNo) &&
+            taskPriority(*currentTaskHead, sortedPriority, currentTaskNo))
           break;
       }
-      currentTask = getTask(pendingTaskHead, currentTaskNo);
-      printDetails(currentTask, detailWindow, -1);
+      currentTask = getTask(*currentTaskHead, currentTaskNo);
+      printDetails(currentTask, detailWindow, -1, active);
       break;
     case KEY_DOWN:
-      for (int i = 0; i < size; i++) {
-        if (currentTaskNo == size - 1)
+      for (int i = 0; i < *aSize; i++) {
+        if (currentTaskNo == (*aSize) - 1)
           currentTaskNo = 0;
         else
           currentTaskNo++;
-        if (taskInGroup(pendingTaskHead, group, currentTaskNo) &&
-            filterTask(pendingTaskHead, filterStr, currentTaskNo) &&
-            taskPriority(pendingTaskHead, sortedPriority, currentTaskNo))
+        if (taskInGroup(*currentTaskHead, group, currentTaskNo) &&
+            filterTask(*currentTaskHead, filterStr, currentTaskNo) &&
+            taskPriority(*currentTaskHead, sortedPriority, currentTaskNo))
           break;
       }
-      currentTask = getTask(pendingTaskHead, currentTaskNo);
-      printDetails(currentTask, detailWindow, -1);
+      currentTask = getTask(*currentTaskHead, currentTaskNo);
+      printDetails(currentTask, detailWindow, -1, active);
       break;
+
+    case KEY_RIGHT:
+    case KEY_LEFT:
+      if (active == 0) {
+        currentTaskHead = &completedTaskHead;
+        inactiveTaskHead = &pendingTaskHead;
+        active = 1;
+        aSize = &cSize;
+        iSize = &pSize;
+      } else {
+        currentTaskHead = &pendingTaskHead;
+        inactiveTaskHead = &completedTaskHead;
+        active = 0;
+        aSize = &pSize;
+        iSize = &cSize;
+      }
+      currentTaskNo = 0;
+      break;
+
     case KEY_F(1):
       newTask =
           createTask(taskWindow, detailWindow, &groupHead, &groupListSize);
       if (newTask) {
-        insert(&pendingTaskHead, newTask);
-        pendingTaskHead = mergeSort(pendingTaskHead, cmpFunction);
+        insert(currentTaskHead, newTask);
+        *currentTaskHead = mergeSort(*currentTaskHead, cmpFunction);
       }
-      size++;
+      (*aSize)++;
       break;
     case KEY_F(2):
       clearWindow(detailWindow);
@@ -773,7 +839,7 @@ int main() {
       break;
     case KEY_F(3):
       newGroup = selectGroup(&groupHead, detailWindow, &groupListSize);
-      if (size != 0 && newGroup != NULL) {
+      if (aSize != 0 && newGroup != NULL) {
         strcpy(group, newGroup->name);
       } else {
         strcpy(group, "");
@@ -784,15 +850,15 @@ int main() {
 
     case KEY_F(5):
       cmpFunction = selectSortingMethod(detailWindow);
-      pendingTaskHead = mergeSort(pendingTaskHead, cmpFunction);
+      *currentTaskHead = mergeSort(*currentTaskHead, cmpFunction);
       break;
 
     case 10: // ENTER
-      detailNo =
-          selectDetail(detailWindow, getTask(pendingTaskHead, currentTaskNo));
+      detailNo = selectDetail(detailWindow,
+                              getTask(*currentTaskHead, currentTaskNo), active);
       break;
     case 330: // DELETE
-      if (size != 0)
+      if (aSize != 0)
         deleteMode = true;
       break;
 
@@ -806,16 +872,26 @@ int main() {
     }
 
     if (detailNo != -1 && detailNo != 4) {
-      editTask(&pendingTaskHead, currentTaskNo, detailNo, &groupHead,
+      editTask(currentTaskHead, currentTaskNo, detailNo, &groupHead,
                &groupListSize, detailWindow);
+      detailNo = -1;
+    } else if (detailNo == 4) {
+      moveTask(inactiveTaskHead, currentTaskHead, currentTaskNo);
+      if (currentTaskNo == (*aSize) - 1)
+        currentTaskNo--;
+      (*aSize)--;
+      (*iSize)++;
+      *currentTaskHead = mergeSort(*currentTaskHead, cmpFunction);
+      *inactiveTaskHead = mergeSort(*inactiveTaskHead, cmpFunction);
       detailNo = -1;
     }
 
     if (deleteMode) {
-      delete (&pendingTaskHead, currentTaskNo, taskWindow);
-      if (currentTaskNo == size - 1)
+      delete (currentTaskHead, currentTaskNo, taskWindow);
+      if (currentTaskNo == (*aSize) - 1)
         currentTaskNo--;
-      size--;
+      (*aSize)--;
+      *currentTaskHead = mergeSort(*currentTaskHead, cmpFunction);
       deleteMode = false;
     }
 
