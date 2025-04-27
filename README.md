@@ -49,9 +49,9 @@ Press F10 to exit
 
 ## Bugs
 
-- Pressing Arrow Keys while task list empty crashes
-- Does not automatically clear description screen
-- `printWrapped` segmentation error randomly → I think I fixed it, but be aware.
+- ~~Pressing Arrow Keys while task list empty crashes~~
+- ~~Does not automatically clear description screen~~
+- ~~`printWrapped` segmentation error randomly~~
 
 ## NOTES
 
