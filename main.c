@@ -832,7 +832,7 @@ void moveTask(Task **destHead, Task **sourceHead, uint taskNo) {
   insert(destHead, task);
 }
 
-struct tm *strptime(char *str, struct tm *time) {
+struct tm *strtotime(char *str, struct tm *time) {
   int day, month, year, hr, min;
   sscanf(str, "%d-%d-%d %d:%d", &day, &month, &year, &hr, &min);
   time->tm_mday = day;
@@ -854,7 +854,7 @@ void load(Task **pendingHead, Task **completeHead, Group **groupHead,
     char deadline[32];
     sscanf(buffer, "%[^;];%[^;];%[^;];%[^;];%i\n", newTask->title,
            newTask->desc, newTask->group, deadline, &newTask->priority);
-    strptime(deadline, &newTask->deadline);
+    strtotime(deadline, &newTask->deadline);
     newTask->nextTask = *pendingHead;
     *pendingHead = newTask;
     (*pSize)++;
@@ -866,7 +866,7 @@ void load(Task **pendingHead, Task **completeHead, Group **groupHead,
     char deadline[32];
     sscanf(buffer, "%[^;];%[^;];%[^;];%[^;];%i\n", newTask->title,
            newTask->desc, newTask->group, deadline, &newTask->priority);
-    strptime(deadline, &newTask->deadline);
+    strtotime(deadline, &newTask->deadline);
     newTask->nextTask = *completeHead;
     *completeHead = newTask;
     (*cSize)++;
