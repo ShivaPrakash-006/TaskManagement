@@ -725,6 +725,8 @@ int selectDetail(WINDOW *window, Task *task, int active) {
       if (currentDetailNo != 4)
         currentDetailNo++;
       break;
+    case 27: // ESC
+      return -1;
     case 10:
       selecting = false;
     }
