@@ -27,14 +27,14 @@ Create A Task Manager for Your Daily needs.
   - [x] Group
   - [x] Filter
   - [x] Priority
-- [ ] Edit Tasks.
+- [x] Edit Tasks.
 - [x] Sort By Deadlines/Priority.
 - [ ] Sorting Modes
   - [ ] Alphabetic
   - [ ] Deadlines
   - [ ] Priority
 - [ ] Sub Tasks(?).
-- [ ] Set Tasks Active/Inactive.
+- [-] Set Tasks Active/Inactive/Completed.
 - [ ] Persistent Storage.
 
 ## IMPLEMENTATION/ALGORITHM/GENERAL IDEA

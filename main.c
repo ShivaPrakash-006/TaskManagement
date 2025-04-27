@@ -1,9 +1,5 @@
 #include <cjson/cJSON.h>
-#include <curses.h>
-#include <float.h>
-#include <menu.h>
 #include <ncurses.h>
-#include <panel.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,8 +7,9 @@
 #include <time.h>
 
 typedef enum Priority { Urgent = 0, Normal = 1, Casual = 2 } Priority;
+typedef enum Status { Pending = 0, Progress = 1, Completed = 2 } Status;
 
-char *priorityToStr(enum Priority priority) {
+char *priorityToStr(Priority priority) {
   if (priority == Urgent)
     return "Urgent";
   else if (priority == Normal)
@@ -27,12 +24,40 @@ typedef struct Task {
   char title[32];
   char desc[512];
   char group[32];
-  bool completed;
   struct tm deadline;
   Priority priority;
+  Status status;
   struct Task *linkedTasks;
   struct Task *nextTask;
 } Task;
+
+Task *getTask(Task *head, int taskNo) {
+  int i = 0;
+  Task *temp = head;
+  while (i != taskNo) {
+    temp = temp->nextTask;
+    i++;
+  }
+  return temp;
+}
+
+bool taskInGroup(Task *head, char *group, uint taskNo) {
+  Task *task = getTask(head, taskNo);
+  return (strcmp(group, "") == 0 || strcmp(task->group, group) == 0);
+}
+
+bool filterTask(Task *head, char *filterStr, uint taskNo) {
+  Task *task = getTask(head, taskNo);
+  return strcasestr(task->title, filterStr) != NULL;
+}
+
+bool taskPriority(Task *head, int priority, uint taskNo) {
+  if (priority == -1)
+    return true;
+  else if (priority == getTask(head, taskNo)->priority)
+    return true;
+  return false;
+}
 
 typedef struct Group {
   char name[32];
@@ -117,15 +142,33 @@ void printInsertMenu(WINDOW *window, int currentItemNo) {
   wrefresh(window);
 }
 
-void printDesc(Task *task, WINDOW *window) {
+void printDetails(Task *task, WINDOW *window, uint detailNo) {
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Description");
+  if (detailNo == 0)
+    wattron(window, A_STANDOUT);
   printWrapped(task->desc, window, 1, 1);
+  wattroff(window, A_STANDOUT);
+
   int y = sizeof(task->desc) / getmaxx(window);
+
+  if (detailNo == 1)
+    wattron(window, A_STANDOUT);
   mvwprintw(window, ++y, 1, "Group: %s", task->group);
+  wattroff(window, A_STANDOUT);
+  if (detailNo == 2)
+    wattron(window, A_STANDOUT);
   mvwprintw(window, ++y, 1, "Deadline: %s", asctime(&task->deadline));
+  wattroff(window, A_STANDOUT);
+  if (detailNo == 3)
+    wattron(window, A_STANDOUT);
   mvwprintw(window, ++y, 1, "Priority: %s", priorityToStr(task->priority));
+  wattroff(window, A_STANDOUT);
+  if (detailNo == 4)
+    wattron(window, A_STANDOUT);
+  mvwprintw(window, ++y + 1, 1, "Mark as Completed");
+  wattroff(window, A_STANDOUT);
 
   wrefresh(window);
 }
@@ -223,12 +266,12 @@ Group *getGroup(Group *groups, int groupNo) {
   return temp;
 }
 
-bool filterGroup(Group *groups, char *filterStr, unsigned int groupNo) {
+bool filterGroup(Group *groups, char *filterStr, uint groupNo) {
   Group *group = getGroup(groups, groupNo - 2);
   return strcasestr(group->name, filterStr) != NULL;
 }
 
-Group *selectGroup(Group **groups, WINDOW *window, unsigned int *size) {
+Group *selectGroup(Group **groups, WINDOW *window, uint *size) {
   bool selecting = true, searching = false;
   int currentGroupNo = 0, keyPress;
   int selectedGroupNo = -1;
@@ -311,8 +354,8 @@ void printPriority(WINDOW *window, int currentItemNo) {
   wrefresh(window);
 }
 
-enum Priority selectPriority(WINDOW *window) {
-  enum Priority priority = Normal;
+Priority selectPriority(WINDOW *window) {
+  Priority priority = Normal;
   int currentItemNo = 1, key;
   bool selecting = true;
   while (selecting) {
@@ -331,11 +374,29 @@ enum Priority selectPriority(WINDOW *window) {
       selecting = false;
     }
   }
-  return (enum Priority)currentItemNo;
+  return (Priority)currentItemNo;
+}
+
+struct tm createDeadline(WINDOW *window) {
+  struct tm newTime;
+  curs_set(1);
+  wmove(window, 1, 1);
+  wprintw(window, "(DD-MM-YY HH:MM): ");
+  int day, month, year, hr, min;
+  wscanw(window, "%d-%d-%d %d:%d", &day, &month, &year, &hr, &min);
+  newTime.tm_mday = day;
+  newTime.tm_mon = month - 1;
+  newTime.tm_year = 100 + year;
+  newTime.tm_hour = hr;
+  newTime.tm_min = min;
+  newTime.tm_sec = 0;
+  mktime(&newTime);
+  curs_set(0);
+  return newTime;
 }
 
 Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
-                 unsigned int *groupListSize) {
+                 uint *groupListSize) {
   echo();
   Task *newTask = (Task *)malloc(sizeof(Task));
   time_t currRawTime = time(NULL);
@@ -387,19 +448,7 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
         strcpy(newTask->group, newGroup->name);
       echo();
     } else if (selectedItemNo == 3) {
-      curs_set(1);
-      wmove(detailWindow, 1, 1);
-      wprintw(detailWindow, "(DD-MM-YY HH:MM): ");
-      int day, month, year, hr, min;
-      wscanw(detailWindow, "%d-%d-%d %d:%d", &day, &month, &year, &hr, &min);
-      newTask->deadline.tm_mday = day;
-      newTask->deadline.tm_mon = month - 1;
-      newTask->deadline.tm_year = 100 + year;
-      newTask->deadline.tm_hour = hr;
-      newTask->deadline.tm_min = min;
-      newTask->deadline.tm_sec = 0;
-      mktime(&newTask->deadline);
-      curs_set(0);
+      newTask->deadline = createDeadline(detailWindow);
     } else if (selectedItemNo == 4) {
       newTask->priority = selectPriority(detailWindow);
     } else if (selectedItemNo == 6) {
@@ -419,6 +468,61 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
   newTask->nextTask = NULL;
   noecho();
   return newTask;
+}
+
+void editTask(Task **head, uint taskNo, int detailNo, Group **groups,
+              uint *groupSize, WINDOW *window) {
+  clearWindow(window);
+  printTitle(window, "Edit Task");
+  echo();
+  Task *task = getTask(*head, taskNo);
+
+  switch (detailNo) {
+  case 0:
+    curs_set(1);
+    wmove(window, 1, 1);
+    wgetnstr(window, task->desc, sizeof(task->desc));
+    curs_set(0);
+    break;
+
+  case 1:
+    strncpy(task->group, selectGroup(groups, window, groupSize)->name,
+            sizeof(task->group));
+    break;
+  case 2:
+    task->deadline = createDeadline(window);
+    break;
+
+  case 3:
+    task->priority = selectPriority(window);
+    break;
+  }
+  noecho();
+}
+
+int selectDetail(WINDOW *window, Task *task) {
+  int currentDetailNo = 0;
+  bool selecting = true;
+  int keyPress;
+
+  while (selecting) {
+    printDetails(task, window, currentDetailNo);
+    keyPress = getch();
+    switch (keyPress) {
+    case KEY_UP:
+      if (currentDetailNo != 0)
+        currentDetailNo--;
+      break;
+    case KEY_DOWN:
+      if (currentDetailNo != 4)
+        currentDetailNo++;
+      break;
+    case 10:
+      selecting = false;
+    }
+  }
+
+  return currentDetailNo;
 }
 
 void insert(Task **head, Task *newTask) {
@@ -491,43 +595,16 @@ void delete(Task **head, int pos, WINDOW *window) {
   }
 }
 
-Task *getTask(Task *head, int taskNo) {
-  int i = 0;
-  Task *temp = head;
-  while (i != taskNo) {
-    temp = temp->nextTask;
-    i++;
-  }
-  return temp;
-}
-
-bool taskInGroup(Task *head, char *group, unsigned int taskNo) {
-  Task *task = getTask(head, taskNo);
-  return (strcmp(group, "") == 0 || strcmp(task->group, group) == 0);
-}
-
-bool filterTask(Task *head, char *filterStr, unsigned int taskNo) {
-  Task *task = getTask(head, taskNo);
-  return strcasestr(task->title, filterStr) != NULL;
-}
-
-bool taskPriority(Task *head, int priority, unsigned int taskNo) {
-  if (priority == -1)
-    return true;
-  else if (priority == getTask(head, taskNo)->priority)
-    return true;
-  return false;
-}
-
 int main() {
-  Task *taskHead = NULL, *newTask;
+  Task *pendingTaskHead = NULL, *completedTaskHead = NULL, *currentTask,
+       *newTask;
   Group *groupHead = NULL, *newGroup;
 
   int choice;
   bool deleteMode = false, run = true, searching = false;
   char title[32], desc[128], group[32] = "", filterStr[32] = "";
-  int sortedPriority = -1;
-  unsigned int size = 0, currentTaskNo = 0, task = 0, groupListSize = 0;
+  int sortedPriority = -1, detailNo = -1;
+  uint size = 0, currentTaskNo = 0, groupListSize = 0;
 
   initscr();
   keypad(stdscr, true);
@@ -535,17 +612,17 @@ int main() {
   noecho();
   curs_set(0);
   WINDOW *taskWindow = newwin(LINES, COLS / 2, 0, 0);
-  WINDOW *descWindow = newwin(LINES, COLS / 2, 0, COLS / 2);
+  WINDOW *detailWindow = newwin(LINES, COLS / 2, 0, COLS / 2);
   wclear(taskWindow);
-  wclear(descWindow);
+  wclear(detailWindow);
   box(taskWindow, 0, 0);
-  box(descWindow, 0, 0);
+  box(detailWindow, 0, 0);
   refresh();
   wrefresh(taskWindow);
-  wrefresh(descWindow);
+  wrefresh(detailWindow);
 
   while (run) {
-    printTasks(taskHead, taskWindow, currentTaskNo, group, filterStr,
+    printTasks(pendingTaskHead, taskWindow, currentTaskNo, group, filterStr,
                sortedPriority);
     choice = getch();
     switch (choice) {
@@ -555,12 +632,13 @@ int main() {
           currentTaskNo = size - 1;
         else
           currentTaskNo--;
-        if (taskInGroup(taskHead, group, currentTaskNo) &&
-            filterTask(taskHead, filterStr, currentTaskNo) &&
-            taskPriority(taskHead, sortedPriority, currentTaskNo))
+        if (taskInGroup(pendingTaskHead, group, currentTaskNo) &&
+            filterTask(pendingTaskHead, filterStr, currentTaskNo) &&
+            taskPriority(pendingTaskHead, sortedPriority, currentTaskNo))
           break;
       }
-      printDesc(getTask(taskHead, currentTaskNo), descWindow);
+      currentTask = getTask(pendingTaskHead, currentTaskNo);
+      printDetails(currentTask, detailWindow, -1);
       break;
     case KEY_DOWN:
       for (int i = 0; i < size; i++) {
@@ -568,49 +646,68 @@ int main() {
           currentTaskNo = 0;
         else
           currentTaskNo++;
-        if (taskInGroup(taskHead, group, currentTaskNo) &&
-            filterTask(taskHead, filterStr, currentTaskNo) &&
-            taskPriority(taskHead, sortedPriority, currentTaskNo))
+        if (taskInGroup(pendingTaskHead, group, currentTaskNo) &&
+            filterTask(pendingTaskHead, filterStr, currentTaskNo) &&
+            taskPriority(pendingTaskHead, sortedPriority, currentTaskNo))
           break;
       }
-      printDesc(getTask(taskHead, currentTaskNo), descWindow);
+      currentTask = getTask(pendingTaskHead, currentTaskNo);
+      printDetails(currentTask, detailWindow, -1);
       break;
     case KEY_F(1):
-      newTask = createTask(taskWindow, descWindow, &groupHead, &groupListSize);
+      newTask =
+          createTask(taskWindow, detailWindow, &groupHead, &groupListSize);
       if (newTask)
-        insert(&taskHead, newTask);
+        insert(&pendingTaskHead, newTask);
       size++;
       break;
     case KEY_F(2):
-      if (size != 0)
-        deleteMode = true;
+      clearWindow(detailWindow);
+      printTitle(detailWindow, "Rename");
+      echo();
+      curs_set(1);
+      wmove(detailWindow, 1, 1);
+      wgetnstr(detailWindow, currentTask->title, sizeof(currentTask->title));
+      curs_set(0);
+      noecho();
       break;
     case KEY_F(3):
-      newGroup = selectGroup(&groupHead, descWindow, &groupListSize);
+      newGroup = selectGroup(&groupHead, detailWindow, &groupListSize);
       if (size != 0 && newGroup != NULL) {
         strcpy(group, newGroup->name);
       } else {
         strcpy(group, "");
       }
     case KEY_F(4):
-      sortedPriority = selectPriority(descWindow);
+      sortedPriority = selectPriority(detailWindow);
       break;
 
     case 10: // ENTER
-      task = currentTaskNo;
+      detailNo =
+          selectDetail(detailWindow, getTask(pendingTaskHead, currentTaskNo));
+      break;
+    case 330: // DELETE
+      if (size != 0)
+        deleteMode = true;
       break;
 
     case '/':
       searching = true;
       break;
 
-    case KEY_F(10):
+    case 'q':
       run = false;
       break;
     }
 
+    if (detailNo != -1 && detailNo != 4) {
+      editTask(&pendingTaskHead, currentTaskNo, detailNo, &groupHead,
+               &groupListSize, detailWindow);
+      detailNo = -1;
+    }
+
     if (deleteMode) {
-      delete (&taskHead, currentTaskNo, taskWindow);
+      delete (&pendingTaskHead, currentTaskNo, taskWindow);
       if (currentTaskNo == size - 1)
         currentTaskNo--;
       size--;
