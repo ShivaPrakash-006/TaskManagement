@@ -10,7 +10,18 @@
 #include <string.h>
 #include <time.h>
 
-typedef enum Priority { Urgent = 1, Normal = 2, Casual = 3 } Priority;
+typedef enum Priority { Urgent = 0, Normal = 1, Casual = 2 } Priority;
+
+char *priorityToStr(enum Priority priority) {
+  if (priority == Urgent)
+    return "Urgent";
+  else if (priority == Normal)
+    return "Normal";
+  else if (priority == Casual)
+    return "Casual";
+  else
+    return "";
+}
 
 typedef struct Task {
   char title[32];
@@ -112,6 +123,7 @@ void printDesc(Task *task, WINDOW *window) {
   int y = sizeof(task->desc) / getmaxx(window);
   mvwprintw(window, ++y, 1, "Group: %s", task->group);
   mvwprintw(window, ++y, 1, "Deadline: %s", asctime(task->deadline));
+  mvwprintw(window, ++y, 1, "Priority: %s", priorityToStr(task->priority));
 
   wrefresh(window);
 }
@@ -138,7 +150,7 @@ void printField(WINDOW *window, Task *task, int fieldNo) {
     break;
 
   case 4:
-    wprintw(window, "%i", task->priority);
+    wprintw(window, "%s", priorityToStr(task->priority));
     break;
 
   case 5:
@@ -279,12 +291,54 @@ Group *selectGroup(Group **groups, WINDOW *window, unsigned int *size) {
   return getGroup(*groups, selectedGroupNo - 2);
 }
 
+void printPriority(WINDOW *window, int currentItemNo) {
+  wclear(window);
+  box(window, 0, 0);
+  printTitle(window, "Priority");
+  wmove(window, 1, 1);
+  for (int i = 0; i < 3; i++) {
+    if (i == currentItemNo) {
+      wattron(window, A_STANDOUT);
+      wprintw(window, "%s", priorityToStr(i));
+      wattroff(window, A_STANDOUT);
+    } else {
+      wprintw(window, "%s", priorityToStr(i));
+    }
+    wmove(window, i + 2, 1);
+  }
+  wrefresh(window);
+}
+
+enum Priority selectPriority(WINDOW *window) {
+  enum Priority priority = Normal;
+  int currentItemNo = 1, key;
+  bool selecting = true;
+  while (selecting) {
+    printPriority(window, currentItemNo);
+    key = getch();
+    switch (key) {
+    case KEY_UP:
+      if (currentItemNo != 0)
+        currentItemNo--;
+      break;
+    case KEY_DOWN:
+      if (currentItemNo != 2)
+        currentItemNo++;
+      break;
+    case 10:
+      selecting = false;
+    }
+  }
+  return (enum Priority)currentItemNo;
+}
+
 Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
                  unsigned int *groupListSize) {
   echo();
   Task *newTask = (Task *)malloc(sizeof(Task));
   time_t currRawTime = time(NULL);
   newTask->deadline = localtime(&currRawTime);
+  newTask->priority = Normal;
   Group *newGroup = NULL;
   wclear(menuWindow);
   wclear(detailWindow);
@@ -344,6 +398,8 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
       newTask->deadline->tm_sec = 0;
       mktime(newTask->deadline);
       curs_set(0);
+    } else if (selectedItemNo == 4) {
+      newTask->priority = selectPriority(detailWindow);
     } else if (selectedItemNo == 6) {
       wclear(detailWindow);
       box(detailWindow, 0, 0);
