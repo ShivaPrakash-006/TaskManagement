@@ -14,12 +14,12 @@ Create A Task Manager for Your Daily needs.
 
 ## FEATURES
 
+- [x] Moderate TUI
 - [ ] Beautiful TUI
 - [x] Add any task to the list.
 - [x] Group tasks (Linked List?).
   - [x] Create and Assign Groups
   - [x] Filter by Group
-- [ ] Link tasks (Graphs).
 - [x] Set deadlines for tasks.
 - [x] Set priority for tasks.
 - [x] Different Views:
@@ -29,18 +29,18 @@ Create A Task Manager for Your Daily needs.
   - [x] Priority
 - [x] Edit Tasks.
 - [x] Sort By Deadlines/Priority.
-- [ ] Sorting Modes
-  - [ ] Alphabetic
-  - [ ] Deadlines
-  - [ ] Priority
-- [ ] Sub Tasks(?).
-- [-] Set Tasks Active/Inactive/Completed.
+- [x] Sorting Modes
+  - [x] Alphabetic
+  - [x] Deadlines
+  - [x] Priority
+- [ ] Set Tasks Active/Inactive/Completed.
 - [ ] Persistent Storage.
 
 ## IMPLEMENTATION/ALGORITHM/GENERAL IDEA
 
 The Popular `ncurses` library is used for the TUI.
-Use Linked Lists to Store Tasks. External Storage of Tasks will use (JSON/SQLite).
+Use Linked Lists to Store Tasks. External Storage of Tasks will use JSON.
+Merge Sort is used to sort by order.
 
 ## WORKING
 

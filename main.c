@@ -7,6 +7,7 @@
 #include <time.h>
 
 typedef enum Priority { Urgent = 0, Normal = 1, Casual = 2 } Priority;
+typedef enum Sort { Prior = 0, Name = 1, Deadline = 2 } Sort;
 typedef enum Status { Pending = 0, Progress = 1, Completed = 2 } Status;
 
 char *priorityToStr(Priority priority) {
@@ -18,6 +19,16 @@ char *priorityToStr(Priority priority) {
     return "Casual";
   else
     return "";
+}
+
+char *sortToStr(Sort sortingMethod) {
+  if (sortingMethod == Prior)
+    return "Priority";
+  else if (sortingMethod == Name)
+    return "Name";
+  else if (sortingMethod == Deadline)
+    return "Deadline";
+  return "";
 }
 
 typedef struct Task {
@@ -58,6 +69,16 @@ bool taskPriority(Task *head, int priority, uint taskNo) {
     return true;
   return false;
 }
+
+typedef int (*TaskComparator)(Task *, Task *);
+
+int compareName(Task *A, Task *B) { return strcmp(A->title, B->title); }
+
+int compareDeadline(Task *A, Task *B) {
+  return difftime(mktime(&A->deadline), mktime(&B->deadline));
+}
+
+int comparePriority(Task *A, Task *B) { return A->priority - B->priority; }
 
 typedef struct Group {
   char name[32];
@@ -500,6 +521,98 @@ void editTask(Task **head, uint taskNo, int detailNo, Group **groups,
   noecho();
 }
 
+void printSorting(WINDOW *window, int currentItemNo) {
+  wclear(window);
+  box(window, 0, 0);
+  printTitle(window, "Sort By");
+  wmove(window, 1, 1);
+  for (int i = 0; i < 3; i++) {
+    if (i == currentItemNo) {
+      wattron(window, A_STANDOUT);
+      wprintw(window, "%s", sortToStr(i));
+      wattroff(window, A_STANDOUT);
+    } else {
+      wprintw(window, "%s", sortToStr(i));
+    }
+    wmove(window, i + 2, 1);
+  }
+  wrefresh(window);
+}
+
+TaskComparator selectSortingMethod(WINDOW *window) {
+  Sort sortMethod = Prior;
+  int currentItemNo = 0, key;
+  bool selecting = true;
+  while (selecting) {
+    printSorting(window, currentItemNo);
+    key = getch();
+    switch (key) {
+    case KEY_UP:
+      if (currentItemNo != 0)
+        currentItemNo--;
+      break;
+    case KEY_DOWN:
+      if (currentItemNo != 2)
+        currentItemNo++;
+      break;
+    case 10:
+      selecting = false;
+    }
+  }
+
+  switch (currentItemNo) {
+  case 0:
+    return comparePriority;
+
+  case 1:
+    return compareName;
+
+  case 2:
+    return compareDeadline;
+  };
+
+  return comparePriority;
+}
+
+Task *splitList(Task *head) {
+  Task *slow = head, *fast = head->nextTask;
+
+  while (fast != NULL && fast->nextTask != NULL) {
+    fast = fast->nextTask->nextTask;
+    slow = slow->nextTask;
+  }
+
+  Task *temp = slow->nextTask;
+  slow->nextTask = NULL;
+  return temp;
+}
+
+Task *merge(Task *first, Task *second, TaskComparator cmp) {
+  if (!first)
+    return second;
+  if (!second)
+    return first;
+
+  if (cmp(first, second) <= 0) {
+    first->nextTask = merge(first->nextTask, second, cmp);
+    return first;
+  } else {
+    second->nextTask = merge(first, second->nextTask, cmp);
+    return second;
+  }
+}
+
+Task *mergeSort(Task *head, TaskComparator cmp) {
+  if (head == NULL || head->nextTask == NULL)
+    return head;
+
+  Task *second = splitList(head);
+
+  head = mergeSort(head, cmp);
+  second = mergeSort(second, cmp);
+  return merge(head, second, cmp);
+}
+
 int selectDetail(WINDOW *window, Task *task) {
   int currentDetailNo = 0;
   bool selecting = true;
@@ -529,26 +642,10 @@ void insert(Task **head, Task *newTask) {
   if (*head == NULL)
     *head = newTask;
 
-  else if ((*head)->priority > newTask->priority) {
-    newTask->nextTask = *head;
-    *head = newTask;
-  } else if ((*head)->priority == newTask->priority &&
-             difftime(mktime(&newTask->deadline), mktime(&(*head)->deadline)) <
-                 0) {
-    newTask->nextTask = *head;
-    *head = newTask;
-  } else {
+  else {
     Task *temp = *head;
-    while (temp->nextTask != NULL) {
-      if (newTask->priority < temp->nextTask->priority)
-        break;
-      else if (newTask->priority == temp->nextTask->priority)
-        if (difftime(mktime(&newTask->deadline),
-                     mktime(&temp->nextTask->deadline)) < 0)
-          break;
+    while (temp->nextTask != NULL)
       temp = temp->nextTask;
-    }
-    newTask->nextTask = temp->nextTask;
     temp->nextTask = newTask;
   }
 }
@@ -605,6 +702,7 @@ int main() {
   char title[32], desc[128], group[32] = "", filterStr[32] = "";
   int sortedPriority = -1, detailNo = -1;
   uint size = 0, currentTaskNo = 0, groupListSize = 0;
+  TaskComparator cmpFunction = comparePriority;
 
   initscr();
   keypad(stdscr, true);
@@ -657,8 +755,10 @@ int main() {
     case KEY_F(1):
       newTask =
           createTask(taskWindow, detailWindow, &groupHead, &groupListSize);
-      if (newTask)
+      if (newTask) {
         insert(&pendingTaskHead, newTask);
+        pendingTaskHead = mergeSort(pendingTaskHead, cmpFunction);
+      }
       size++;
       break;
     case KEY_F(2):
@@ -680,6 +780,11 @@ int main() {
       }
     case KEY_F(4):
       sortedPriority = selectPriority(detailWindow);
+      break;
+
+    case KEY_F(5):
+      cmpFunction = selectSortingMethod(detailWindow);
+      pendingTaskHead = mergeSort(pendingTaskHead, cmpFunction);
       break;
 
     case 10: // ENTER
