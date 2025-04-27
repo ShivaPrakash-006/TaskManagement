@@ -15,7 +15,7 @@ Create A Task Manager for Your Daily needs.
 ## FEATURES
 
 - [x] Moderate TUI
-- [ ] Beautiful TUI
+- [x] Beautiful TUI
 - [x] Add any task to the list.
 - [x] Group tasks (Linked List?).
   - [x] Create and Assign Groups

@@ -115,12 +115,15 @@ void printTasks(Task *head, WINDOW *window, int currentTaskNo, char *group,
   Task *temp = head;
   int taskNo = 0;
   int lineNo = 3;
+  wattron(window, COLOR_PAIR(4));
   wclear(window);
   box(window, 0, 0);
   if (active)
     printTitle(window, "Completed Tasks");
   else
     printTitle(window, "Pending Tasks");
+  wattroff(window, COLOR_PAIR(4));
+  wattron(window, COLOR_PAIR(5));
   mvwprintw(window, 1, 1, "Search (/): ");
   wmove(window, 3, 1);
   while (temp != NULL) {
@@ -138,6 +141,7 @@ void printTasks(Task *head, WINDOW *window, int currentTaskNo, char *group,
     taskNo++;
     temp = temp->nextTask;
   }
+  wattroff(window, COLOR_PAIR(5));
   wrefresh(window);
 }
 
@@ -146,9 +150,12 @@ void printInsertMenu(WINDOW *window, int currentItemNo) {
                    "Priority", "Add",         "Cancel"};
   int noOfItems = 7;
   int itemNo = 0;
+  wattron(window, COLOR_PAIR(4));
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Add Task");
+  wattroff(window, COLOR_PAIR(4));
+  wattron(window, COLOR_PAIR(5));
   wmove(window, 1, 1);
   while (itemNo < noOfItems) {
     if (currentItemNo == itemNo) {
@@ -159,13 +166,17 @@ void printInsertMenu(WINDOW *window, int currentItemNo) {
       wprintw(window, "%s", items[itemNo]);
     wmove(window, ++itemNo + 1, 1);
   }
+  wattroff(window, COLOR_PAIR(5));
   wrefresh(window);
 }
 
 void printDetails(Task *task, WINDOW *window, uint detailNo, int active) {
+  wattron(window, COLOR_PAIR(4));
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Description");
+  wattroff(window, COLOR_PAIR(4));
+  wattron(window, COLOR_PAIR(3));
   if (detailNo == 0)
     wattron(window, A_STANDOUT);
   printWrapped(task->desc, window, 1, 1);
@@ -192,13 +203,17 @@ void printDetails(Task *task, WINDOW *window, uint detailNo, int active) {
   else
     mvwprintw(window, ++y + 1, 1, "Mark as Pending");
   wattroff(window, A_STANDOUT);
+  wattroff(window, COLOR_PAIR(3));
 
   wrefresh(window);
 }
 
 void printField(WINDOW *window, Task *task, int fieldNo) {
+  wattron(window, COLOR_PAIR(4));
   wclear(window);
   box(window, 0, 0);
+  wattroff(window, COLOR_PAIR(4));
+  wattron(window, COLOR_PAIR(3));
   wmove(window, 1, 1);
   switch (fieldNo) {
   case 0:
@@ -225,6 +240,7 @@ void printField(WINDOW *window, Task *task, int fieldNo) {
     wprintw(window, "Add Task");
   }
   wrefresh(window);
+  wattroff(window, COLOR_PAIR(3));
 }
 
 void printGroups(WINDOW *window, Group *groups, int currentGroupNo,
@@ -232,9 +248,12 @@ void printGroups(WINDOW *window, Group *groups, int currentGroupNo,
   Group *group = groups;
   char *items[] = {"Create", "Cancel"};
   int lineNo = 3, groupNo = 0;
+  wattron(window, COLOR_PAIR(4));
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Groups");
+  wattroff(window, COLOR_PAIR(4));
+  wattron(window, COLOR_PAIR(3));
   mvwprintw(window, 1, 1, "Search (/): ");
   wmove(window, 3, 1);
   while (group != NULL || groupNo < 2) {
@@ -261,21 +280,24 @@ void printGroups(WINDOW *window, Group *groups, int currentGroupNo,
     }
     groupNo++;
   }
+  wattroff(window, COLOR_PAIR(3));
   wrefresh(window);
 }
 
-void deleteGroup(Group **head, int pos, WINDOW *window) {
+int deleteGroup(Group **head, int pos, WINDOW *window) {
   if (window != NULL) {
+    wattron(window, COLOR_PAIR(1));
     wclear(window);
     box(window, 0, 0);
     printTitle(window, "Delete");
     mvwprintw(window, 1, 1, "Are you sure? (y/n)");
+    wattroff(window, COLOR_PAIR(1));
     char choice = wgetch(window);
     if (choice != 'y')
-      return;
+      return 0;
   }
   if (*head == NULL) // Empty
-    return;
+    return 0;
 
   else if ((*head)->nextGroup == NULL) {
     free(*head);
@@ -307,13 +329,16 @@ void deleteGroup(Group **head, int pos, WINDOW *window) {
     temp->nextGroup = temp->nextGroup->nextGroup;
     free(toFree);
   }
+  return 1;
 }
 
 void createGroup(Group **head, WINDOW *window) {
   echo();
   curs_set(1);
+  wattron(window, COLOR_PAIR(4));
   clearWindow(window);
   printTitle(window, "Create Group");
+  wattroff(window, COLOR_PAIR(4));
   Group *newGroup = (Group *)malloc(sizeof(Group));
   mvwprintw(window, 1, 1, "Enter Name of Group: ");
   wgetnstr(window, newGroup->name, sizeof(newGroup->name));
@@ -386,9 +411,10 @@ Group *selectGroup(Group **groups, WINDOW *window, uint *size) {
     }
 
     if (deleting) {
-      deleteGroup(groups, currentGroupNo, window);
-      currentGroupNo = 0;
-      (*size)--;
+      if (deleteGroup(groups, currentGroupNo, window)) {
+        currentGroupNo = 0;
+        (*size)--;
+      }
       deleting = false;
     }
 
@@ -396,6 +422,7 @@ Group *selectGroup(Group **groups, WINDOW *window, uint *size) {
       echo();
       curs_set(1);
       mvwprintw(window, 1, 1, "Search (/): ");
+      wrefresh(window);
       wgetnstr(window, filterStr, 32);
       wrefresh(window);
       searching = false;
@@ -416,9 +443,11 @@ Group *selectGroup(Group **groups, WINDOW *window, uint *size) {
 }
 
 void printPriority(WINDOW *window, int currentItemNo) {
+  wattron(window, COLOR_PAIR(4));
   wclear(window);
   box(window, 0, 0);
   printTitle(window, "Priority");
+  wattroff(window, COLOR_PAIR(4));
   wmove(window, 1, 1);
   for (int i = 0; i < 3; i++) {
     if (i == currentItemNo) {
@@ -482,11 +511,15 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
   memcpy(&newTask->deadline, localtime(&currRawTime), sizeof(struct tm));
   newTask->priority = Normal;
   Group *newGroup = NULL;
+  wattron(menuWindow, COLOR_PAIR(4));
+  wattron(detailWindow, COLOR_PAIR(4));
   wclear(menuWindow);
   wclear(detailWindow);
   box(menuWindow, 0, 0);
   box(detailWindow, 0, 0);
   printTitle(menuWindow, "Add Task");
+  wattroff(menuWindow, COLOR_PAIR(4));
+  wattroff(detailWindow, COLOR_PAIR(4));
 
   bool creating = true;
   int currentItemNo = 0, keyPress;
@@ -531,10 +564,12 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
     } else if (selectedItemNo == 4) {
       newTask->priority = selectPriority(detailWindow);
     } else if (selectedItemNo == 6) {
+      wattron(detailWindow, COLOR_PAIR(1));
       wclear(detailWindow);
       box(detailWindow, 0, 0);
       printTitle(detailWindow, "Cancel?");
       mvwprintw(detailWindow, 1, 1, "Are you sure? (y/n)");
+      wattroff(detailWindow, COLOR_PAIR(1));
       char choice = wgetch(detailWindow);
 
       if (choice == 'y') {
@@ -551,8 +586,10 @@ Task *createTask(WINDOW *menuWindow, WINDOW *detailWindow, Group **groups,
 
 void editTask(Task **head, uint taskNo, int detailNo, Group **groups,
               uint *groupSize, WINDOW *window) {
+  wattron(window, COLOR_PAIR(4));
   clearWindow(window);
   printTitle(window, "Edit Task");
+  wattroff(window, COLOR_PAIR(4));
   echo();
   Task *task = getTask(*head, taskNo);
 
@@ -708,18 +745,20 @@ void insert(Task **head, Task *newTask) {
   }
 }
 
-void delete(Task **head, int pos, WINDOW *window) {
+int delete(Task **head, int pos, WINDOW *window) {
   if (window != NULL) {
+    wattron(window, COLOR_PAIR(1));
     wclear(window);
     box(window, 0, 0);
     printTitle(window, "Delete");
     mvwprintw(window, 1, 1, "Are you sure? (y/n)");
+    wattroff(window, COLOR_PAIR(1));
     char choice = wgetch(window);
     if (choice != 'y')
-      return;
+      return 0;
   }
   if (*head == NULL) // Empty
-    return;
+    return 0;
 
   else if ((*head)->nextTask == NULL) {
     free(*head);
@@ -751,6 +790,7 @@ void delete(Task **head, int pos, WINDOW *window) {
     temp->nextTask = temp->nextTask->nextTask;
     free(toFree);
   }
+  return 1;
 }
 
 void moveTask(Task **destHead, Task **sourceHead, uint taskNo) {
@@ -877,6 +917,43 @@ void quit(Task **pendingHead, Task **completeHead, Group **groupHead) {
   fclose(groupFile);
 }
 
+void displayHelp(WINDOW *window) {
+  wattron(window, COLOR_PAIR(6));
+  clearWindow(window);
+  printTitle(window, "Help");
+  int y = 0;
+  mvwprintw(window, ++y, 1, "Task Organiser & Manager");
+  y++;
+  mvwprintw(window, ++y, 1, "n -> Create New Task");
+  mvwprintw(window, ++y, 1, "delete -> Delete");
+  mvwprintw(window, ++y, 1, "g -> Select Group");
+  mvwprintw(window, ++y, 1, "F2 -> Rename Task");
+  mvwprintw(window, ++y, 1, "p -> Select Priority");
+  mvwprintw(window, ++y, 1, "/ -> Search");
+  mvwprintw(window, ++y, 1, "F5 -> Sort Tasks");
+  mvwprintw(window, ++y, 1, "? -> Display This");
+  mvwprintw(window, ++y, 1, "ENTER -> Select");
+  mvwprintw(window, ++y, 1, "q -> Save and Quit");
+  y++;
+  mvwprintw(window, ++y, 1, "Made By Shiva Prakash.");
+  mvwprintw(window, ++y, 1,
+            "More info at github.com/ShivaPrakash-006/TaskManagement");
+  wrefresh(window);
+  getch();
+  wattroff(window, COLOR_PAIR(6));
+}
+
+void setupColors() {
+  init_pair(1, COLOR_RED, 0);
+  init_pair(2, COLOR_BLUE, 0);
+  init_pair(3, COLOR_CYAN, 0);
+  init_pair(4, COLOR_GREEN, 0);
+  init_pair(5, COLOR_YELLOW, 0);
+  init_pair(6, COLOR_MAGENTA, 0);
+  init_pair(7, COLOR_WHITE, 0);
+  init_pair(8, COLOR_BLACK, 0);
+}
+
 int main() {
   Task *pendingTaskHead = NULL, *completedTaskHead = NULL;
   Group *groupHead = NULL, *newGroup;
@@ -902,6 +979,7 @@ int main() {
   keypad(stdscr, true);
   cbreak();
   noecho();
+  start_color();
   curs_set(0);
   WINDOW *taskWindow = newwin(LINES, COLS / 2, 0, 0);
   WINDOW *detailWindow = newwin(LINES, COLS / 2, 0, COLS / 2);
@@ -912,7 +990,8 @@ int main() {
   refresh();
   wrefresh(taskWindow);
   wrefresh(detailWindow);
-
+  start_color();
+  setupColors();
   while (run) {
     if (*aSize != 0)
       printDetails(currentTask, detailWindow, -1, active);
@@ -981,8 +1060,10 @@ int main() {
       (*aSize)++;
       break;
     case KEY_F(2):
+      wattron(detailWindow, COLOR_PAIR(4));
       clearWindow(detailWindow);
       printTitle(detailWindow, "Rename");
+      wattroff(detailWindow, COLOR_PAIR(4));
       echo();
       curs_set(1);
       wmove(detailWindow, 1, 1);
@@ -1020,6 +1101,10 @@ int main() {
       searching = true;
       break;
 
+    case '?':
+      displayHelp(detailWindow);
+      break;
+
     case 'q':
       quit(&pendingTaskHead, &completedTaskHead, &groupHead);
       run = false;
@@ -1042,10 +1127,11 @@ int main() {
     }
 
     if (deleteMode) {
-      delete (currentTaskHead, currentTaskNo, taskWindow);
-      if (currentTaskNo == (*aSize) - 1)
-        currentTaskNo--;
-      (*aSize)--;
+      if (delete (currentTaskHead, currentTaskNo, taskWindow)) {
+        if (currentTaskNo == (*aSize) - 1)
+          currentTaskNo--;
+        (*aSize)--;
+      }
       *currentTaskHead = mergeSort(*currentTaskHead, cmpFunction);
       deleteMode = false;
     }
